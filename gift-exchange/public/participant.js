@@ -72,10 +72,9 @@ function render() {
       el(
         'p',
         { class: 'lead' },
-        view.revealed ? "The gifts are open. Here's how everyone matched up." : "Names have been drawn. Here's your slip."
+        "Names have been drawn. Here's your slip."
       ),
       slipBlock(),
-      view.revealed ? revealBlock() : null,
       guidelinesBlock(),
       myListBlock()
     );
@@ -129,7 +128,7 @@ function detailsFor(r) {
 }
 
 function slipBlock() {
-  const opened = !!view.recipient && (isOpened() || view.revealed);
+  const opened = !!view.recipient && isOpened();
   const name = el('span', { class: 'slip-name hand' });
   if (opened) setName(name, view.recipient.name);
 
@@ -159,7 +158,7 @@ function slipBlock() {
 
   const details = el('div', { class: 'match-details', hidden: !opened });
   if (opened) details.append(...detailsFor(view.recipient));
-  if (opened && !view.revealed) details.append(foldBackButton());
+  if (opened) details.append(foldBackButton());
 
   slip.addEventListener('click', async () => {
     if (stage.classList.contains('is-open') || stage.classList.contains('is-busy')) return;
@@ -178,7 +177,7 @@ function slipBlock() {
     storage.set(openedKey, '1');
     setName(name, next.recipient.name);
     details.replaceChildren(...detailsFor(next.recipient));
-    if (!next.revealed) details.append(foldBackButton());
+    details.append(foldBackButton());
     details.classList.add('is-waiting');
     details.hidden = false;
     stage.classList.remove('is-busy');
@@ -224,31 +223,6 @@ function guidelinesBlock() {
       'ul',
       { class: 'rules' },
       view.guidelines.map((g) => el('li', {}, g))
-    )
-  );
-}
-
-function revealBlock() {
-  const rows = view.reveal || [];
-  let lastLoop = 0;
-  return el(
-    'section',
-    { class: 'block', 'aria-labelledby': 'reveal-h' },
-    el('h2', { id: 'reveal-h' }, 'Who had who'),
-    el(
-      'ul',
-      { class: 'reveal-list' },
-      rows.map((r) => {
-        const li = el(
-          'li',
-          { class: lastLoop && r.loop !== lastLoop ? 'new-loop' : null },
-          el('span', { class: 'giver' + (r.giver === view.me.name ? ' is-me' : '') }, r.giver),
-          el('span', { class: 'to' }, 'gave to'),
-          el('span', { class: 'receiver' + (r.receiver === view.me.name ? ' is-me' : '') }, r.receiver)
-        );
-        lastLoop = r.loop;
-        return li;
-      })
     )
   );
 }
@@ -412,14 +386,13 @@ function renderProblem(err) {
   );
 }
 
-// Coming back to the tab later: pick up a draw or reveal that happened meanwhile.
+// Coming back to the tab later: pick up a draw that happened meanwhile.
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible' || !view || Date.now() - lastLoad < 30000) return;
   try {
     const next = await load();
     const changed =
       next.drawn !== view.drawn ||
-      next.revealed !== view.revealed ||
       JSON.stringify(next.recipient) !== JSON.stringify(view.recipient) ||
       JSON.stringify(next.guidelines) !== JSON.stringify(view.guidelines);
     if (changed && !listDirty) {

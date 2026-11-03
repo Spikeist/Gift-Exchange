@@ -259,7 +259,7 @@ try {
     assert.equal(r.status, 200, JSON.stringify(r.body));
     state = r.body;
     assert.ok(state.drawnAt);
-    assert.equal(state.reveal, null);
+    assert.equal(state.reveal, undefined);
     const text = JSON.stringify(state);
     assert.ok(!/receiver|recipient|draw"/i.test(text), 'organizer state must not include matches');
     assert.ok(state.people.every((p) => p.openedAt === null));
@@ -285,7 +285,7 @@ try {
     assert.ok(r.body.recipient);
     assert.notEqual(r.body.recipient.name, 'Alex');
     assert.notEqual(r.body.recipient.name, 'Jordan'); // kept apart
-    assert.equal(r.body.reveal, null);
+    assert.equal(r.body.reveal, undefined);
     st = (await call('state', {}, session)).body;
     assert.ok(st.people.find((p) => p.id === alex.id).openedAt > 0);
   });
@@ -304,17 +304,18 @@ try {
     assert.equal(r.body.recipient.link, 'https://www.amazon.com/hz/wishlist/ls/XYZ?ref_=wl_share');
   });
 
-  await test('reveal shows everyone the full list', async () => {
-    let r = await call('setReveal', { on: true }, session);
-    assert.equal(r.status, 200);
-    assert.equal(r.body.reveal.length, 5);
-    const p = await call('me', { token: byName('Taylor').token });
-    assert.equal(p.body.revealed, true);
-    assert.equal(p.body.reveal.length, 5);
-    assert.ok(p.body.recipient, 'recipient shows after the reveal even without unfolding');
-    r = await call('setReveal', { on: false }, session);
-    assert.equal(r.body.reveal, null);
-    assert.equal((await call('me', { token: byName('Taylor').token })).body.reveal, null);
+  await test('nobody can ever see the full list of matches', async () => {
+    assert.equal((await call('setReveal', { on: true }, session)).status, 400);
+    const st = (await call('state', {}, session)).body;
+    assert.ok(!('reveal' in st) && !('revealedAt' in st));
+    for (const p of state.people) {
+      const v = (await call('me', { token: p.token, reveal: true })).body;
+      assert.ok(!('reveal' in v) && !('revealed' in v));
+      const text = JSON.stringify(v);
+      const others = state.people.filter((x) => x.name !== p.name && x.name !== v.recipient.name);
+      // a person's page names only themselves and their own match
+      for (const o of others) assert.ok(!text.includes(JSON.stringify(o.name)), `${p.name}'s page mentions ${o.name}`);
+    }
   });
 
   await test('undo draw resets matches and opened status', async () => {
@@ -325,7 +326,6 @@ try {
     r = await call('me', { token: byName('Alex').token, reveal: true });
     assert.equal(r.body.drawn, false);
     assert.equal(r.body.recipient, null);
-    assert.equal((await call('setReveal', { on: true }, session)).status, 409);
   });
 
   await test('repeated draws always respect the rules', async () => {

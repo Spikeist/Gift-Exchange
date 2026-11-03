@@ -205,7 +205,7 @@ function renderSetup() {
   );
   centerScreen(
     'Set up your gift exchange',
-    "Create the organizer password. You'll use it to add people, draw names, and reveal everything at the end.",
+    "Create the organizer password. You'll use it to add people and draw names.",
     el('div', { class: 'panel light' }, form)
   );
   pw.focus();
@@ -291,25 +291,6 @@ function dashboardDemoBanner() {
   return demoBanner(sample, reset);
 }
 
-function revealList(rows) {
-  let lastLoop = 0;
-  return el(
-    'ul',
-    { class: 'reveal-list' },
-    rows.map((r) => {
-      const li = el(
-        'li',
-        { class: lastLoop && r.loop !== lastLoop ? 'new-loop' : null },
-        el('span', { class: 'giver' }, r.giver),
-        el('span', { class: 'to' }, 'gave to'),
-        el('span', { class: 'receiver' }, r.receiver)
-      );
-      lastLoop = r.loop;
-      return li;
-    })
-  );
-}
-
 function headerBand() {
   const n = state.people.length;
   const withList = state.people.filter((p) => p.link || p.notes).length;
@@ -317,7 +298,6 @@ function headerBand() {
   const actions = [];
   let phase;
   let help = null;
-  let reveal = null;
 
   if (!state.drawnAt) {
     phase =
@@ -333,25 +313,17 @@ function headerBand() {
     help =
       n < 3
         ? 'Add at least 3 people to draw names.'
-        : "The draw is random and nobody can get themselves. You won't see who got who until the reveal.";
-  } else if (!state.revealedAt) {
+        : "The draw is random and nobody can get themselves. Nobody, including you, can see who got who. Each person only sees their own match.";
+  } else {
     phase = [
       el('strong', {}, `Names drawn ${shortDate(state.drawnAt)}. `),
       `${opened} of ${n} ${opened === 1 ? 'has' : 'have'} opened their slip.`,
     ];
-    const revealBtn = el('button', { class: 'btn', type: 'button' }, 'Reveal who had who');
-    revealBtn.addEventListener('click', () => confirmReveal(revealBtn));
     const undoBtn = el('button', { class: 'btn btn--ghost', type: 'button' }, 'Undo draw');
     undoBtn.addEventListener('click', () => confirmUndo(undoBtn, opened));
-    actions.push(revealBtn, undoBtn);
+    actions.push(undoBtn);
     help =
-      'Let everyone know names are drawn. They open the same link they already have to see who they got.';
-  } else {
-    phase = [el('strong', {}, 'Revealed. '), "Everyone's link now shows who had who."];
-    reveal = revealList(state.reveal || []);
-    const hideBtn = el('button', { class: 'btn btn--ghost', type: 'button' }, 'Hide the reveal');
-    hideBtn.addEventListener('click', () => act('setReveal', { on: false }, hideBtn, 'Reveal hidden'));
-    actions.push(hideBtn);
+      'Let everyone know names are drawn. They open the same link they already have to see who they got. Nobody can see anyone else\'s match.';
   }
 
   return el(
@@ -370,7 +342,6 @@ function headerBand() {
       ),
       el('h1', {}, state.title),
       el('p', { class: 'phase' }, phase),
-      reveal,
       el('div', { class: 'actions' }, actions),
       help ? el('p', { class: 'help' }, help) : null
     )
@@ -391,15 +362,6 @@ async function confirmDraw(button) {
     confirm: 'Draw names',
   });
   if (ok) act('draw', {}, button, 'Names drawn');
-}
-
-async function confirmReveal(button) {
-  const ok = await confirmDialog({
-    title: 'Reveal who had who?',
-    body: ["Everyone's link will show the full list of who gave to who. Do this after all the gifts are opened."],
-    confirm: 'Reveal',
-  });
-  if (ok) act('setReveal', { on: true }, button, 'Revealed');
 }
 
 async function confirmUndo(button, opened) {
@@ -617,7 +579,7 @@ function peoplePanel() {
           el('li', {}, 'Send everyone the join link above so they can add their own name and gift list. You can also add people yourself below.'),
           el('li', {}, "Add yourself too if you're taking part."),
           el('li', {}, 'Draw names. Everyone opens the same link to see who they got.'),
-          el('li', {}, 'After the gifts are opened, reveal who had who.')
+          el('li', {}, "Everyone brings their gift. Who had who stays secret on the site.")
         )
       );
   return el(

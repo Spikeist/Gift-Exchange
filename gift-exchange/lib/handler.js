@@ -1,9 +1,9 @@
 import * as db from './store.js';
 import * as auth from './auth.js';
-import { makeDraw, revealOrder, DrawError } from './draw.js';
+import { makeDraw, DrawError } from './draw.js';
 
 // Everything lives in a handful of Redis keys:
-//   gx:meta    JSON: title, guidelines, keep-apart pairs, draw/reveal times
+//   gx:meta    JSON: title, guidelines, keep-apart pairs, draw time, join link
 //   gx:people  hash: id -> { id, name, token, createdAt }
 //   gx:lists   hash: id -> { link, notes, updatedAt }   (each person edits their own)
 //   gx:draw    hash: giverId -> receiverId
@@ -163,7 +163,6 @@ async function load({ withAdmin = false } = {}) {
       guidelines: Array.isArray(m.guidelines) ? m.guidelines : DEFAULT_GUIDELINES,
       pairs: Array.isArray(m.pairs) ? m.pairs : [],
       drawnAt: m.drawnAt || null,
-      revealedAt: m.revealedAt || null,
       joinCode: m.joinCode || null,
       joinOpen: m.joinOpen !== false,
     },
@@ -210,22 +209,13 @@ function badLink() {
   );
 }
 
-function revealRows(state) {
-  const byId = Object.fromEntries(state.people.map((p) => [p.id, p]));
-  return revealOrder(state.people, state.draw).map((r) => ({
-    giver: byId[r.giverId] ? byId[r.giverId].name : 'Someone',
-    receiver: byId[r.receiverId] ? byId[r.receiverId].name : 'Someone',
-    loop: r.loop,
-  }));
-}
-
 function siteUrl() {
   const host = process.env.VERCEL_PROJECT_PRODUCTION_URL;
   if (!host) return null;
   return 'https://' + host.replace(/^https?:\/\//, '').replace(/\/+$/, '');
 }
 
-// What the organizer sees. Never includes who drew whom until the reveal.
+// What the organizer sees. Never includes who drew whom: nobody sees that.
 function adminView(state) {
   const drawn = !!state.meta.drawnAt;
   return {
@@ -233,7 +223,6 @@ function adminView(state) {
     guidelines: state.meta.guidelines,
     pairs: state.meta.pairs,
     drawnAt: state.meta.drawnAt,
-    revealedAt: state.meta.revealedAt,
     siteUrl: siteUrl(),
     people: state.people.map((p) => ({
       id: p.id,
@@ -242,7 +231,6 @@ function adminView(state) {
       ...listOf(state, p.id),
       openedAt: drawn && state.seen[p.id] ? Number(state.seen[p.id]) : null,
     })),
-    reveal: state.meta.revealedAt ? revealRows(state) : null,
     joinCode: state.meta.joinCode,
     joinOpen: state.meta.joinOpen,
   };
@@ -251,24 +239,20 @@ function adminView(state) {
 // What one participant sees through their private link.
 function participantView(state, me, { reveal = false } = {}) {
   const drawn = !!state.meta.drawnAt;
-  const revealed = !!state.meta.revealedAt;
   const view = {
     title: state.meta.title,
     guidelines: state.meta.guidelines,
     me: { name: me.name, ...listOf(state, me.id) },
     peopleCount: state.people.length,
     drawn,
-    revealed,
     inDraw: drawn ? !!state.draw[me.id] : null,
     recipient: null,
-    reveal: null,
   };
-  if (drawn && (reveal || revealed)) {
+  if (drawn && reveal) {
     const receiverId = state.draw[me.id];
     const r = receiverId && state.people.find((p) => p.id === receiverId);
     if (r) view.recipient = { name: r.name, ...listOf(state, r.id) };
   }
-  if (revealed) view.reveal = revealRows(state);
   return view;
 }
 
@@ -504,7 +488,7 @@ const adminActions = {
       ['DEL', KEYS.draw],
       ['HSET', KEYS.draw, ...Object.entries(matches).flat()],
       ['DEL', KEYS.seen],
-      saveMeta({ ...state.meta, pairs, drawnAt: Date.now(), revealedAt: null }),
+      saveMeta({ ...state.meta, pairs, drawnAt: Date.now() }),
     ]);
   },
 
@@ -512,14 +496,10 @@ const adminActions = {
     await db.transaction([
       ['DEL', KEYS.draw],
       ['DEL', KEYS.seen],
-      saveMeta({ ...state.meta, drawnAt: null, revealedAt: null }),
+      saveMeta({ ...state.meta, drawnAt: null }),
     ]);
   },
 
-  async setReveal(state, { on }) {
-    if (!state.meta.drawnAt) throw new HttpError(409, 'Draw names before revealing.', 'NOT_DRAWN');
-    await db.cmd(...saveMeta({ ...state.meta, revealedAt: on ? Date.now() : null }));
-  },
 };
 
 // ---------- entry point ----------

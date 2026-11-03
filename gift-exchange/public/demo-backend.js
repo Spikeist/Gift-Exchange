@@ -20,7 +20,6 @@ function blank() {
       guidelines: DEFAULT_GUIDELINES,
       pairs: [],
       drawnAt: null,
-      revealedAt: null,
       joinCode: null,
       joinOpen: true,
     },
@@ -157,28 +156,15 @@ function listOf(s, id) {
   return { link: l.link || '', notes: l.notes || '', listUpdatedAt: l.updatedAt || null };
 }
 
-function revealRows(s) {
-  const byId = Object.fromEntries(s.people.map((p) => [p.id, p]));
-  const visited = new Set();
-  const rows = [];
-  let loop = 0;
-  for (const p of s.people) {
-    if (visited.has(p.id) || !s.draw[p.id]) continue;
-    loop += 1;
-    let cur = p.id;
-    while (!visited.has(cur) && s.draw[cur]) {
-      visited.add(cur);
-      rows.push({ giver: byId[cur]?.name || 'Someone', receiver: byId[s.draw[cur]]?.name || 'Someone', loop });
-      cur = s.draw[cur];
-    }
-  }
-  return rows;
-}
-
 function adminView(s) {
   const drawn = !!s.meta.drawnAt;
   return {
-    ...s.meta,
+    title: s.meta.title,
+    guidelines: s.meta.guidelines,
+    pairs: s.meta.pairs,
+    drawnAt: s.meta.drawnAt,
+    joinCode: s.meta.joinCode,
+    joinOpen: s.meta.joinOpen,
     siteUrl: null,
     people: s.people.map((p) => ({
       id: p.id,
@@ -187,29 +173,24 @@ function adminView(s) {
       ...listOf(s, p.id),
       openedAt: drawn && s.seen[p.id] ? s.seen[p.id] : null,
     })),
-    reveal: s.meta.revealedAt ? revealRows(s) : null,
   };
 }
 
 function participantView(s, me, reveal) {
   const drawn = !!s.meta.drawnAt;
-  const revealed = !!s.meta.revealedAt;
   const view = {
     title: s.meta.title,
     guidelines: s.meta.guidelines,
     me: { name: me.name, ...listOf(s, me.id) },
     peopleCount: s.people.length,
     drawn,
-    revealed,
     inDraw: drawn ? !!s.draw[me.id] : null,
     recipient: null,
-    reveal: null,
   };
-  if (drawn && (reveal || revealed)) {
+  if (drawn && reveal) {
     const r = s.people.find((p) => p.id === s.draw[me.id]);
     if (r) view.recipient = { name: r.name, ...listOf(s, r.id) };
   }
-  if (revealed) view.reveal = revealRows(s);
   return view;
 }
 
@@ -328,17 +309,11 @@ const admin = {
     s.draw = makeDraw(s.people.map((p) => p.id), s.meta.pairs);
     s.seen = {};
     s.meta.drawnAt = Date.now();
-    s.meta.revealedAt = null;
   },
   undoDraw(s) {
     s.draw = {};
     s.seen = {};
     s.meta.drawnAt = null;
-    s.meta.revealedAt = null;
-  },
-  setReveal(s, { on }) {
-    if (!s.meta.drawnAt) fail(409, 'Draw names before revealing.', 'NOT_DRAWN');
-    s.meta.revealedAt = on ? Date.now() : null;
   },
 };
 

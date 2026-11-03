@@ -1,8 +1,8 @@
 # Gift Exchange
 
-A private gift exchange website. You add everyone and each person gets their own private link, where they add their gift list. When you draw names, nobody can get themselves. Each person's link then shows who they're buying for, that person's gift list, and your guidelines. At the end, you reveal who had who.
+A private gift exchange website. You add everyone and each person gets their own private link, where they add their gift list. When you draw names, nobody can get themselves. Each person's link then shows who they're buying for, that person's gift list, and your guidelines.
 
-Only people you send a link to can get in. You never see who drew whom until you reveal it, so you can take part too.
+Only people you send a link to can get in. Nobody, including you, can see who drew whom. Each person only sees their own match, so you can take part too.
 
 ## Put it online (free, about 5 minutes)
 
@@ -18,11 +18,10 @@ If you'd rather use the command line: run `npx vercel` in this folder (sign in a
 
 ## Running the exchange
 
-1. On `/admin`, add everyone, including yourself if you're taking part.
-2. Use **Copy link** (or **Send** on your phone) to text each person their private link. They add their gift list there. You can also add lists for people with **Edit**.
+1. Open `/admin`. Want to try things first? `/demo` is a full practice copy with pretend data.
+2. Send the **Join link** to everyone (a group text works). Each person adds their own name and gift list and gets their private link. You can also add people yourself and copy their links with **Copy link**. Click **Close joining** once everyone's in.
 3. Optional: under **Keep apart**, pair people who shouldn't draw each other, like couples.
 4. Click **Draw names**. Then tell everyone to open their link again. They tap their slip to see who they got.
-5. After all the gifts are opened, click **Reveal who had who**. Everyone's link then shows the full list.
 
 ### Good to know
 
