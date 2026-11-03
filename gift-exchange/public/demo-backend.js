@@ -15,7 +15,15 @@ let memory = null; // used if localStorage is unavailable
 
 function blank() {
   return {
-    meta: { title: 'Gift Exchange (demo)', guidelines: DEFAULT_GUIDELINES, pairs: [], drawnAt: null, revealedAt: null },
+    meta: {
+      title: 'Gift Exchange (demo)',
+      guidelines: DEFAULT_GUIDELINES,
+      pairs: [],
+      drawnAt: null,
+      revealedAt: null,
+      joinCode: null,
+      joinOpen: true,
+    },
     people: [],
     lists: {},
     draw: {},
@@ -48,7 +56,7 @@ export function resetDemo() {
     localStorage.removeItem(KEY);
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (k && k.startsWith('gx-demo-open-')) localStorage.removeItem(k);
+      if (k && (k.startsWith('gx-demo-open-') || k.startsWith('gx-demo-joined-'))) localStorage.removeItem(k);
     }
   } catch {
     /* nothing stored */
@@ -237,6 +245,12 @@ const SAMPLE = [
 
 const admin = {
   state() {},
+  setJoin(s, { open }) {
+    s.meta.joinOpen = !!open;
+  },
+  newJoinCode(s) {
+    s.meta.joinCode = randomToken();
+  },
   addSample(s) {
     notWhileDrawn(s, 'Names are already drawn. Undo the draw to add people.');
     const have = new Set(s.people.map((p) => p.name.toLowerCase()));
@@ -330,6 +344,31 @@ const admin = {
 
 export async function handle(action, data = {}) {
   const s = load();
+  if (!s.meta.joinCode) {
+    s.meta.joinCode = randomToken();
+    if (s.meta.joinOpen === undefined) s.meta.joinOpen = true;
+    save(s);
+  }
+  const checkJoin = () => data.code === s.meta.joinCode || fail(404, "This join link doesn't work anymore. Ask the organizer for the current one.", 'BAD_JOIN');
+  if (action === 'joinInfo') {
+    checkJoin();
+    return { title: s.meta.title, open: s.meta.joinOpen && !s.meta.drawnAt, drawn: !!s.meta.drawnAt, peopleCount: s.people.length };
+  }
+  if (action === 'join') {
+    checkJoin();
+    if (s.meta.drawnAt) fail(409, 'Names have already been drawn, so joining is closed. Ask the organizer to add you.', 'JOIN_CLOSED');
+    if (!s.meta.joinOpen) fail(409, 'The organizer has closed joining. Ask them to add you.', 'JOIN_CLOSED');
+    const n = cleanName(data.name);
+    if (s.people.some((p) => p.name.toLowerCase() === n.toLowerCase())) {
+      fail(409, `Someone named ${n} has already joined. If that's you, ask the organizer for your link. Otherwise add your last initial.`, 'DUPLICATE');
+    }
+    const entry = { link: cleanLink(data.link), notes: cleanNotes(data.notes), updatedAt: Date.now() };
+    const person = { id: randomToken(6), name: n, token: randomToken(), createdAt: Date.now() };
+    s.people.push(person);
+    if (entry.link || entry.notes) s.lists[person.id] = entry;
+    save(s);
+    return { token: person.token, name: person.name };
+  }
   if (action === 'status') return { db: true, setup: true };
   if (action === 'login' || action === 'setup') return { session: 'demo' };
   if (action === 'me') {

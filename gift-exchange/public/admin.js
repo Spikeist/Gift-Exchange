@@ -478,6 +478,68 @@ function personRow(p) {
   );
 }
 
+function joinUrl() {
+  if (DEMO) return `${location.origin}/demo-join#${state.joinCode}`;
+  const base = (state.siteUrl || location.origin).replace(/\/+$/, '');
+  return `${base}/join#${state.joinCode}`;
+}
+
+function joinBox() {
+  if (state.drawnAt || !state.joinCode) return null;
+  const url = joinUrl();
+  const copy = el('button', { class: 'btn btn--small', type: 'button' }, icon('copy'), 'Copy join link');
+  copy.addEventListener('click', async () => {
+    if (await copyText(url)) toast('Copied the join link');
+    else showLinkDialog({ name: 'The join' }, url);
+  });
+  const send = canShare
+    ? el('button', { class: 'btn btn--small btn--ghost', type: 'button' }, icon('share'), 'Send')
+    : null;
+  send?.addEventListener('click', async () => {
+    try {
+      await navigator.share({
+        title: state.title,
+        text: `Join ${state.title}! Add your name and gift list here:`,
+        url,
+      });
+    } catch (err) {
+      if (err && err.name !== 'AbortError' && (await copyText(url))) toast('Copied the join link');
+    }
+  });
+  const toggle = el(
+    'button',
+    { class: 'btn btn--small btn--ghost', type: 'button' },
+    state.joinOpen ? 'Close joining' : 'Open joining'
+  );
+  toggle.addEventListener('click', () =>
+    act('setJoin', { open: !state.joinOpen }, toggle, state.joinOpen ? 'Joining closed' : 'Joining open')
+  );
+  const fresh = el('button', { class: 'btn btn--quiet', type: 'button' }, 'Make a new join link');
+  fresh.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Make a new join link?',
+      body: ["The old join link stops working. People who already joined keep their own links."],
+      confirm: 'Make a new join link',
+      danger: true,
+    });
+    if (ok) act('newJoinCode', {}, fresh, 'New join link ready');
+  });
+  return el(
+    'div',
+    { class: 'join-box' + (state.joinOpen ? '' : ' is-closed') },
+    el('p', { class: 'label' }, state.joinOpen ? 'Join link' : 'Join link (closed)'),
+    el(
+      'p',
+      { class: 'help' },
+      state.joinOpen
+        ? 'Send this one link to everyone, like in a group text. Each person adds their own name and gift list and gets their own private link. Close joining once everyone is in.'
+        : "Joining is closed, so this link won't let anyone new in. Open it again if someone still needs to join."
+    ),
+    state.joinOpen ? el('p', { class: 'link-box' }, url) : null,
+    el('div', { class: 'actions' }, state.joinOpen ? copy : null, state.joinOpen ? send : null, toggle, state.joinOpen ? fresh : null)
+  );
+}
+
 function addPeopleForm() {
   const input = el('textarea', {
     class: 'textarea',
@@ -552,8 +614,8 @@ function peoplePanel() {
         el(
           'ol',
           {},
-          el('li', {}, "Add everyone in the exchange, including yourself if you're taking part."),
-          el('li', {}, 'Send each person their private link so they can add their gift list.'),
+          el('li', {}, 'Send everyone the join link above so they can add their own name and gift list. You can also add people yourself below.'),
+          el('li', {}, "Add yourself too if you're taking part."),
           el('li', {}, 'Draw names. Everyone opens the same link to see who they got.'),
           el('li', {}, 'After the gifts are opened, reveal who had who.')
         )
@@ -577,6 +639,7 @@ function peoplePanel() {
             ])
       )
     ),
+    joinBox(),
     body,
     drawn
       ? el('p', { class: 'add-people help' }, 'Names are drawn. To add or remove people, undo the draw first.')

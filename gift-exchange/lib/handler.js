@@ -164,6 +164,8 @@ async function load({ withAdmin = false } = {}) {
       pairs: Array.isArray(m.pairs) ? m.pairs : [],
       drawnAt: m.drawnAt || null,
       revealedAt: m.revealedAt || null,
+      joinCode: m.joinCode || null,
+      joinOpen: m.joinOpen !== false,
     },
     people: Object.values(db.hashToObject(people))
       .map(parse)
@@ -194,6 +196,10 @@ function findPerson(state, id) {
 function findByToken(state, token) {
   if (typeof token !== 'string' || token.length < 10 || token.length > 64) return null;
   return state.people.find((p) => p.token === token) || null;
+}
+
+function badJoin() {
+  return new HttpError(404, "This join link doesn't work anymore. Ask the organizer for the current one.", 'BAD_JOIN');
 }
 
 function badLink() {
@@ -237,6 +243,8 @@ function adminView(state) {
       openedAt: drawn && state.seen[p.id] ? Number(state.seen[p.id]) : null,
     })),
     reveal: state.meta.revealedAt ? revealRows(state) : null,
+    joinCode: state.meta.joinCode,
+    joinOpen: state.meta.joinOpen,
   };
 }
 
@@ -316,6 +324,43 @@ const publicActions = {
     return participantView(state, me, { reveal: wantsReveal });
   },
 
+  // The shared join link: anyone holding it can add themselves before the draw.
+  async joinInfo({ code }) {
+    const state = await load();
+    const ok = typeof code === 'string' && code.length >= 10 && code === state.meta.joinCode;
+    if (!ok) throw badJoin();
+    return {
+      title: state.meta.title,
+      open: state.meta.joinOpen && !state.meta.drawnAt,
+      drawn: !!state.meta.drawnAt,
+      peopleCount: state.people.length,
+    };
+  },
+
+  async join({ code, name, link, notes }) {
+    const state = await load();
+    if (typeof code !== 'string' || code.length < 10 || code !== state.meta.joinCode) throw badJoin();
+    if (state.meta.drawnAt) {
+      throw new HttpError(409, 'Names have already been drawn, so joining is closed. Ask the organizer to add you.', 'JOIN_CLOSED');
+    }
+    if (!state.meta.joinOpen) throw new HttpError(409, 'The organizer has closed joining. Ask them to add you.', 'JOIN_CLOSED');
+    const n = cleanName(name);
+    if (state.people.some((p) => p.name.toLowerCase() === n.toLowerCase())) {
+      throw new HttpError(
+        409,
+        `Someone named ${n} has already joined. If that's you, ask the organizer for your link. Otherwise add your last initial.`,
+        'DUPLICATE'
+      );
+    }
+    if (state.people.length >= LIMITS.people) throw new HttpError(400, 'This exchange is full.');
+    const entry = { link: cleanLink(link), notes: cleanNotes(notes), updatedAt: Date.now() };
+    const person = { id: auth.newId(), name: n, token: auth.newLinkToken(), createdAt: Date.now() };
+    const commands = [['HSET', KEYS.people, person.id, JSON.stringify(person)]];
+    if (entry.link || entry.notes) commands.push(['HSET', KEYS.lists, person.id, JSON.stringify(entry)]);
+    await db.transaction(commands);
+    return { token: person.token, name: person.name };
+  },
+
   // A participant saving their own gift list.
   async saveList({ token, link, notes }) {
     const state = await load();
@@ -335,6 +380,14 @@ function notWhileDrawn(state, message) {
 
 const adminActions = {
   async state() {},
+
+  async setJoin(state, { open }) {
+    await db.cmd(...saveMeta({ ...state.meta, joinOpen: !!open }));
+  },
+
+  async newJoinCode(state) {
+    await db.cmd(...saveMeta({ ...state.meta, joinCode: auth.newLinkToken() }));
+  },
 
   async addPeople(state, { names }) {
     notWhileDrawn(state, 'Names are already drawn. Undo the draw to add people.');
@@ -498,6 +551,10 @@ export async function handle(request) {
       const session = auth_.replace(/^Bearer\s+/i, '');
       if (!state.admin || !auth.checkSession(session, state.admin)) {
         throw new HttpError(401, 'Your sign-in expired. Sign in again.', 'AUTH');
+      }
+      if (!state.meta.joinCode) {
+        state.meta.joinCode = auth.newLinkToken();
+        await db.cmd(...saveMeta(state.meta));
       }
       await adminActions[action](state, body);
       return json(adminView(action === 'state' ? state : await load()));

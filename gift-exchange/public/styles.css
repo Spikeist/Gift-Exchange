@@ -1201,3 +1201,34 @@ body:not(.on-pine) :focus-visible {
   justify-content: flex-start;
   border-radius: var(--radius);
 }
+
+.join-box {
+  margin: 0 1.25rem 1.25rem;
+  padding: 1rem 1.1rem 1.1rem;
+  border-radius: var(--radius-sm);
+  background: #fdf6e3;
+  border: 1px solid #ecdcae;
+}
+
+.join-box.is-closed {
+  background: var(--snow);
+  border-color: var(--line);
+}
+
+.join-box .help {
+  margin-top: 0.25rem;
+}
+
+.join-box .link-box {
+  margin-top: 0.6rem;
+  color: var(--ink);
+}
+
+.join-box .actions {
+  margin-top: 0.75rem;
+}
+
+.center-card .link-box {
+  color: var(--ink);
+  font-size: 0.9375rem;
+}

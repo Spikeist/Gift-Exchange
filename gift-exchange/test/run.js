@@ -152,6 +152,35 @@ try {
     for (const t of tokens) assert.match(t, /^[A-Za-z0-9_-]{22}$/);
   });
 
+  await test('people can add themselves with the join link', async () => {
+    const code = state.joinCode;
+    assert.match(code, /^[A-Za-z0-9_-]{22}$/);
+    assert.equal(state.joinOpen, true);
+    assert.equal((await call('joinInfo', { code: 'wrong-code-123456' })).status, 404);
+    let r = await call('joinInfo', { code });
+    assert.deepEqual(r.body, { title: 'Gift Exchange', open: true, drawn: false, peopleCount: 5 });
+    r = await call('join', { code, name: 'Riley', link: 'amazon.com/hz/wishlist/ls/RILEY', notes: 'Size S' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const me = await call('me', { token: r.body.token });
+    assert.equal(me.body.me.name, 'Riley');
+    assert.equal(me.body.me.link, 'https://amazon.com/hz/wishlist/ls/RILEY');
+    assert.equal((await call('join', { code, name: 'riley' })).status, 409);
+    assert.equal((await call('join', { code: 'nope-nope-nope-1', name: 'Zed' })).status, 404);
+    // organizer can close joining and replace the code
+    r = await call('setJoin', { open: false }, session);
+    assert.equal(r.body.joinOpen, false);
+    assert.equal((await call('join', { code, name: 'Zed' })).status, 409);
+    r = await call('setJoin', { open: true }, session);
+    r = await call('newJoinCode', {}, session);
+    assert.notEqual(r.body.joinCode, code);
+    assert.equal((await call('joinInfo', { code })).status, 404);
+    // clean up so later checks see the original five
+    const riley = r.body.people.find((p) => p.name === 'Riley');
+    r = await call('removePerson', { id: riley.id }, session);
+    state = r.body;
+    assert.equal(state.people.length, 5);
+  });
+
   const byName = (name) => state.people.find((p) => p.name.startsWith(name));
 
   await test('participant page before the draw', async () => {
@@ -238,6 +267,8 @@ try {
     assert.equal((await call('draw', {}, session)).status, 409);
     // Locked while drawn
     assert.equal((await call('addPeople', { names: ['Late Larry'] }, session)).status, 409);
+    assert.equal((await call('join', { code: state.joinCode, name: 'Late Larry' })).status, 409);
+    assert.equal((await call('joinInfo', { code: state.joinCode })).body.open, false);
     assert.equal((await call('removePerson', { id: byName('Alex').id }, session)).status, 409);
     assert.equal((await call('setPairs', { pairs: [] }, session)).status, 409);
   });
