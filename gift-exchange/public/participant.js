@@ -1,8 +1,8 @@
-import { api, el, icon, linkify, safeHref, hostOf, storage, toast, busy } from './common.js';
+import { api, el, icon, linkify, safeHref, hostOf, storage, toast, busy, DEMO, demoBanner } from './common.js';
 
 const app = document.getElementById('app');
 const token = decodeURIComponent(location.hash.replace(/^#/, '')).trim();
-const openedKey = 'gx-open-' + token.slice(0, 12);
+const openedKey = (DEMO ? 'gx-demo-open-' : 'gx-open-') + token.slice(0, 12);
 
 let view = null;
 let lastLoad = 0;
@@ -20,6 +20,15 @@ async function load() {
 }
 
 async function start() {
+  if (DEMO) {
+    document.body.prepend(
+      demoBanner(
+        el('a', { class: 'btn btn--small btn--paper', href: '/demo' }, 'Back to organizer view'),
+        el('a', { class: 'btn btn--small btn--ghost', href: '/demo-person' }, 'Pick someone else')
+      )
+    );
+    if (!token) return renderDemoPicker();
+  }
   if (!token) return renderLanding();
   try {
     view = await load();
@@ -349,7 +358,32 @@ function renderLanding() {
       masthead('Gift Exchange'),
       el('h1', {}, 'This is a private gift exchange'),
       el('p', {}, "Open the personal link the organizer sent you to see who you're buying for."),
-      el('p', {}, el('a', { href: '/admin' }, 'Organizer sign-in'))
+      el('p', {}, el('a', { href: '/demo' }, 'See how it works'), ' or ', el('a', { href: '/admin' }, 'organizer sign-in'))
+    )
+  );
+}
+
+async function renderDemoPicker() {
+  document.title = 'Pick someone (demo)';
+  let people = [];
+  try {
+    people = (await api('demoPeople')).people;
+  } catch {
+    /* empty demo */
+  }
+  app.replaceChildren(
+    el(
+      'div',
+      { class: 'center-card' },
+      masthead('Gift Exchange'),
+      el('h1', {}, "Whose page do you want to see?"),
+      people.length
+        ? el(
+            'ul',
+            { class: 'demo-people' },
+            people.map((p) => el('li', {}, el('a', { class: 'btn btn--paper', href: `/demo-person#${p.token}` }, p.name)))
+          )
+        : el('p', {}, "Nobody's in the demo yet. Add people in the organizer view first.")
     )
   );
 }

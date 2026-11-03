@@ -1,4 +1,4 @@
-import { api, el, icon, storage, toast, busy, copyText, shortDate } from './common.js';
+import { api, el, icon, storage, toast, busy, copyText, shortDate, DEMO, demoBanner } from './common.js';
 
 const SESSION_KEY = 'gx-admin-session';
 const app = document.getElementById('app');
@@ -54,6 +54,7 @@ function signOut() {
 }
 
 function linkFor(p) {
+  if (DEMO) return `${location.origin}/demo-person#${p.token}`;
   const base = (state.siteUrl || location.origin).replace(/\/+$/, '');
   return `${base}/#${p.token}`;
 }
@@ -264,7 +265,30 @@ async function loadDashboard() {
 function renderDashboard() {
   setPine(false);
   document.title = `${state.title} (organizer)`;
-  app.replaceChildren(headerBand(), el('main', { class: 'admin-main' }, peoplePanel(), apartSection(), settingsSection()));
+  app.replaceChildren(
+    DEMO ? dashboardDemoBanner() : '',
+    headerBand(),
+    el('main', { class: 'admin-main' }, peoplePanel(), apartSection(), settingsSection())
+  );
+}
+
+function dashboardDemoBanner() {
+  const sample = el('button', { class: 'btn btn--small btn--paper', type: 'button' }, 'Add sample people');
+  sample.addEventListener('click', () => act('addSample', {}, sample, 'Added sample people'));
+  const reset = el('button', { class: 'btn btn--small btn--ghost', type: 'button' }, 'Start over');
+  reset.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Start the demo over?',
+      body: ['Everyone, every list, and the draw in this demo are cleared.'],
+      confirm: 'Start over',
+      danger: true,
+    });
+    if (!ok) return;
+    (await import('./demo-backend.js')).resetDemo();
+    await loadDashboard();
+    toast('Demo cleared');
+  });
+  return demoBanner(sample, reset);
 }
 
 function revealList(rows) {
@@ -339,8 +363,10 @@ function headerBand() {
       el(
         'div',
         { class: 'band-top' },
-        masthead('Organizer'),
-        el('button', { class: 'btn btn--quiet', type: 'button', onclick: signOut }, 'Sign out')
+        masthead(DEMO ? 'Organizer view' : 'Organizer'),
+        DEMO
+          ? el('a', { class: 'btn btn--quiet', href: '/demo-person' }, "See someone's page")
+          : el('button', { class: 'btn btn--quiet', type: 'button', onclick: signOut }, 'Sign out')
       ),
       el('h1', {}, state.title),
       el('p', { class: 'phase' }, phase),
@@ -432,6 +458,14 @@ function personRow(p) {
             { class: 'btn btn--small', type: 'button', 'aria-label': `Send ${p.name} their link`, onclick: () => shareLink(p) },
             icon('share'),
             'Send'
+          )
+        : null,
+      DEMO
+        ? el(
+            'a',
+            { class: 'btn btn--small', href: linkFor(p), target: '_blank', rel: 'noopener', 'aria-label': `Open ${p.name}'s page` },
+            icon('external'),
+            'Open their page'
           )
         : null,
       el(
@@ -534,9 +568,13 @@ function peoplePanel() {
       el(
         'p',
         { class: 'help' },
-        'Each person has their own private link. Send it to them so they can add their gift list, and later see who they got. Links start with ',
-        el('code', {}, base + '/'),
-        '.'
+        ...(DEMO
+          ? ["On the real site you send each person their private link. Here, use Open their page to see exactly what they'd see."]
+          : [
+              'Each person has their own private link. Send it to them so they can add their gift list, and later see who they got. Links start with ',
+              el('code', {}, base + '/'),
+              '.',
+            ])
       )
     ),
     body,
@@ -755,6 +793,7 @@ function settingsSection() {
 // ---------- start ----------
 
 async function boot() {
+  if (DEMO) session = 'demo';
   try {
     const status = await api('status');
     if (!status.db) return renderNoDb();

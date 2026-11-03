@@ -8,7 +8,14 @@ export class ApiError extends Error {
   }
 }
 
+// Demo pages mark <html data-demo>; their actions run in the browser instead.
+export const DEMO = document.documentElement.hasAttribute('data-demo');
+
 export async function api(action, data = {}, { session } = {}) {
+  if (DEMO) {
+    const demo = await import('./demo-backend.js');
+    return demo.handle(action, JSON.parse(JSON.stringify(data)));
+  }
   let res;
   try {
     res = await fetch('/api/exchange', {
@@ -226,4 +233,19 @@ export async function busy(button, work) {
     button.classList.remove('is-busy');
     button.removeAttribute('aria-busy');
   }
+}
+
+/** The strip across the top of demo pages. */
+export function demoBanner(...actions) {
+  return el(
+    'div',
+    { class: 'demo-banner' },
+    el(
+      'p',
+      {},
+      el('strong', {}, 'Demo. '),
+      'Try anything here. It uses pretend data saved only in this browser and never touches the real exchange.'
+    ),
+    actions.length ? el('div', { class: 'demo-actions' }, actions) : null
+  );
 }
