@@ -1,0 +1,11 @@
+{
+  "name": "gift-exchange",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Private gift exchange: draw names, share gift lists, reveal at the end.",
+  "scripts": {
+    "dev": "node dev/server.js",
+    "test": "node test/run.js"
+  }
+}
