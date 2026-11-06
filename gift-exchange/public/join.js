@@ -1,4 +1,4 @@
-import { api, el, icon, storage, busy, copyText, toast, DEMO, demoBanner } from './common.js';
+import { api, el, icon, storage, busy, copyText, toast, DEMO, demoBanner, linkFields } from './common.js';
 
 const app = document.getElementById('app');
 const code = decodeURIComponent(location.hash.replace(/^#/, '')).trim();
@@ -58,14 +58,7 @@ function renderJoined(title, name, token) {
 
 function renderForm(info) {
   const name = el('input', { class: 'input', autocomplete: 'name' });
-  const link = el('input', {
-    class: 'input',
-    inputmode: 'url',
-    autocapitalize: 'off',
-    autocomplete: 'off',
-    spellcheck: 'false',
-    placeholder: 'https://www.amazon.com/hz/wishlist/…',
-  });
+  const links = linkFields('join-link');
   const notes = el('textarea', { class: 'textarea', rows: '4' });
   const error = el('p', { class: 'form-error', role: 'alert', hidden: true });
   const submit = el('button', { class: 'btn', type: 'submit' }, 'Join the exchange');
@@ -83,7 +76,7 @@ function renderForm(info) {
         }
         await busy(submit, async () => {
           try {
-            const r = await api('join', { code, name: name.value, link: link.value, notes: notes.value });
+            const r = await api('join', { code, name: name.value, links: links.values(), notes: notes.value });
             storage.set(savedKey, JSON.stringify({ name: r.name, token: r.token }));
             renderJoined(info.title, r.name, r.token);
           } catch (err) {
@@ -94,7 +87,13 @@ function renderForm(info) {
       },
     },
     field('join-name', 'Your name', name, 'The name everyone knows you by. Add a last initial if someone shares your name.'),
-    field('join-link', 'Gift list link', link, 'Optional. Paste a link to your Amazon wish list or any other gift list.'),
+    el(
+      'div',
+      { class: 'field' },
+      el('label', { for: 'join-link' }, 'Gift list links'),
+      el('p', { class: 'help' }, 'Optional. Paste your Amazon wish list or any other gift list. Use Add another link for lists on other sites.'),
+      links.node
+    ),
     field(
       'join-notes',
       'Notes',

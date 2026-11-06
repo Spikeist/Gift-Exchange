@@ -1232,3 +1232,50 @@ body:not(.on-pine) :focus-visible {
   color: var(--ink);
   font-size: 0.9375rem;
 }
+
+/* several gift list links */
+.link-rows {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.link-row {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.link-row .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.link-row .link-remove {
+  flex: none;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+}
+
+.add-link {
+  justify-self: start;
+  padding-left: 0;
+  margin-top: 0.15rem;
+  color: var(--pine);
+  font-weight: 700;
+}
+
+.list-links {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.list-links h3 {
+  font-size: 1rem;
+  color: var(--frost);
+  font-weight: 700;
+}
+
+.link-fields {
+  display: grid;
+  gap: 0.4rem;
+}

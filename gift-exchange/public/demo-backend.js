@@ -112,6 +112,33 @@ function cleanLink(v) {
   return url.toString();
 }
 
+const MAX_LINKS = 10;
+
+// Several list links (Amazon plus other stores). Accepts a list, or text with
+// one or more web addresses in it.
+function cleanLinks(links, link) {
+  let raw = links !== undefined ? links : link;
+  if (raw === undefined || raw === null) raw = [];
+  if (!Array.isArray(raw)) raw = [raw];
+  const out = [];
+  for (const item of raw) {
+    const text = String(item ?? '').trim();
+    if (!text) continue;
+    const found = text.match(/https?:\/\/[^\s<>"']+/gi);
+    for (const candidate of found && found.length > 1 ? found : [text]) {
+      const url = cleanLink(candidate);
+      if (url && !out.includes(url)) out.push(url);
+    }
+  }
+  if (out.length > MAX_LINKS) fail(400, `Add up to ${MAX_LINKS} links.`);
+  return out;
+}
+
+function listEntry(l) {
+  const links = Array.isArray(l.links) ? l.links : l.link ? [l.link] : [];
+  return { links, link: links[0] || '', notes: l.notes || '' };
+}
+
 function cleanNotes(v) {
   const s = String(v ?? '').replace(/\r\n?/g, '\n').replace(/\n{4,}/g, '\n\n\n').trim();
   if (s.length > 2000) fail(400, 'Keep notes under 2000 characters.');
@@ -153,7 +180,7 @@ function makeDraw(ids, pairs) {
 
 function listOf(s, id) {
   const l = s.lists[id] || {};
-  return { link: l.link || '', notes: l.notes || '', listUpdatedAt: l.updatedAt || null };
+  return { ...listEntry(l), listUpdatedAt: l.updatedAt || null };
 }
 
 function adminView(s) {
@@ -216,7 +243,7 @@ function addNames(s, names) {
 }
 
 const SAMPLE = [
-  ['Alex', 'https://www.example.com/alex-wish-list', 'Size L hoodies. Into golf and good coffee.'],
+  ['Alex', ['https://www.example.com/alex-wish-list', 'https://www.example.org/alex-golf-list'], 'Size L hoodies. Into golf and good coffee.'],
   ['Jordan', 'https://www.example.com/jordan-wish-list', ''],
   ['Sam', '', 'No list yet. Likes cooking, candles, and anything cozy.'],
   ['Taylor', 'https://www.example.com/taylor-wish-list', 'Shoe size 9.'],
@@ -240,14 +267,15 @@ const admin = {
     addNames(s, fresh.map(([n]) => n));
     for (const [name, link, notes] of fresh) {
       const p = s.people.find((x) => x.name === name);
-      if (link || notes) s.lists[p.id] = { link, notes, updatedAt: Date.now() };
+      const links = Array.isArray(link) ? link : link ? [link] : [];
+      if (links.length || notes) s.lists[p.id] = { links, notes, updatedAt: Date.now() };
     }
   },
   addPeople(s, { names }) {
     notWhileDrawn(s, 'Names are already drawn. Undo the draw to add people.');
     addNames(s, Array.isArray(names) ? names : String(names ?? '').split(/[\n,]/));
   },
-  updatePerson(s, { id, name, link, notes }) {
+  updatePerson(s, { id, name, links, link, notes }) {
     const p = findPerson(s, id);
     if (name !== undefined) {
       const n = cleanName(name);
@@ -258,10 +286,12 @@ const admin = {
     }
     const cur = listOf(s, id);
     const next = {
-      link: link !== undefined ? cleanLink(link) : cur.link,
+      links: links !== undefined || link !== undefined ? cleanLinks(links, link) : cur.links,
       notes: notes !== undefined ? cleanNotes(notes) : cur.notes,
     };
-    if (next.link !== cur.link || next.notes !== cur.notes) s.lists[id] = { ...next, updatedAt: Date.now() };
+    if (JSON.stringify(next.links) !== JSON.stringify(cur.links) || next.notes !== cur.notes) {
+      s.lists[id] = { ...next, updatedAt: Date.now() };
+    }
   },
   newLink(s, { id }) {
     findPerson(s, id).token = randomToken();
@@ -337,10 +367,10 @@ export async function handle(action, data = {}) {
     if (s.people.some((p) => p.name.toLowerCase() === n.toLowerCase())) {
       fail(409, `Someone named ${n} has already joined. If that's you, ask the organizer for your link. Otherwise add your last initial.`, 'DUPLICATE');
     }
-    const entry = { link: cleanLink(data.link), notes: cleanNotes(data.notes), updatedAt: Date.now() };
+    const entry = { links: cleanLinks(data.links, data.link), notes: cleanNotes(data.notes), updatedAt: Date.now() };
     const person = { id: randomToken(6), name: n, token: randomToken(), createdAt: Date.now() };
     s.people.push(person);
-    if (entry.link || entry.notes) s.lists[person.id] = entry;
+    if (entry.links.length || entry.notes) s.lists[person.id] = entry;
     save(s);
     return { token: person.token, name: person.name };
   }
@@ -357,10 +387,10 @@ export async function handle(action, data = {}) {
   }
   if (action === 'saveList') {
     const me = findByToken(s, data.token);
-    const entry = { link: cleanLink(data.link), notes: cleanNotes(data.notes), updatedAt: Date.now() };
+    const entry = { links: cleanLinks(data.links, data.link), notes: cleanNotes(data.notes), updatedAt: Date.now() };
     s.lists[me.id] = entry;
     save(s);
-    return { me: { name: me.name, link: entry.link, notes: entry.notes, listUpdatedAt: entry.updatedAt } };
+    return { me: { name: me.name, ...listEntry(entry), listUpdatedAt: entry.updatedAt } };
   }
   if (action === 'demoPeople') {
     return { title: s.meta.title, people: s.people.map((p) => ({ name: p.name, token: p.token })) };

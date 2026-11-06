@@ -1,4 +1,4 @@
-import { api, el, icon, linkify, safeHref, hostOf, storage, toast, busy, DEMO, demoBanner } from './common.js';
+import { api, el, icon, linkify, safeHref, hostOf, storage, toast, busy, DEMO, demoBanner, linkFields } from './common.js';
 
 const app = document.getElementById('app');
 const token = decodeURIComponent(location.hash.replace(/^#/, '')).trim();
@@ -93,15 +93,35 @@ function setName(node, name) {
 }
 
 function detailsFor(r) {
-  const href = safeHref(r.link);
+  const links = (r.links || (r.link ? [r.link] : [])).map(safeHref).filter(Boolean);
   const items = [];
-  if (href) {
+  if (links.length === 1) {
     items.push(
       el(
         'a',
-        { class: 'btn btn--paper list-button', href, target: '_blank', rel: 'noopener noreferrer' },
-        el('span', {}, `Open ${r.name}'s gift list`, el('small', {}, hostOf(href))),
+        { class: 'btn btn--paper list-button', href: links[0], target: '_blank', rel: 'noopener noreferrer' },
+        el('span', {}, `Open ${r.name}'s gift list`, el('small', {}, hostOf(links[0]))),
         icon('external')
+      )
+    );
+  } else if (links.length > 1) {
+    const seen = {};
+    items.push(
+      el(
+        'div',
+        { class: 'list-links' },
+        el('h3', {}, `${r.name}'s gift lists`),
+        links.map((href) => {
+          const host = hostOf(href);
+          seen[host] = (seen[host] || 0) + 1;
+          const count = links.filter((h) => hostOf(h) === host).length;
+          return el(
+            'a',
+            { class: 'btn btn--paper list-button', href, target: '_blank', rel: 'noopener noreferrer' },
+            el('span', {}, count > 1 ? `${host} (${seen[host]})` : host),
+            icon('external')
+          );
+        })
       )
     );
   }
@@ -115,7 +135,7 @@ function detailsFor(r) {
       )
     );
   }
-  if (!href && !r.notes) {
+  if (!links.length && !r.notes) {
     items.push(
       el(
         'p',
@@ -228,19 +248,11 @@ function guidelinesBlock() {
 }
 
 function myListBlock() {
-  const linkInput = el('input', {
-    class: 'input',
-    id: 'my-link',
-    name: 'link',
-    type: 'text',
-    inputmode: 'url',
-    autocomplete: 'off',
-    autocapitalize: 'off',
-    spellcheck: 'false',
-    placeholder: 'https://www.amazon.com/hz/wishlist/…',
-    'aria-describedby': 'my-link-help',
-  });
-  linkInput.value = view.me.link || '';
+  const markDirty = () => {
+    listDirty = true;
+    status.replaceChildren();
+  };
+  const links = linkFields('my-link', view.me.links || (view.me.link ? [view.me.link] : []), { onChange: markDirty });
   const notesInput = el('textarea', {
     class: 'textarea',
     id: 'my-notes',
@@ -253,11 +265,6 @@ function myListBlock() {
   const error = el('p', { class: 'form-error', role: 'alert', hidden: true });
   const save = el('button', { class: 'btn', type: 'submit' }, 'Save my list');
 
-  const markDirty = () => {
-    listDirty = true;
-    status.replaceChildren();
-  };
-  linkInput.addEventListener('input', markDirty);
   notesInput.addEventListener('input', markDirty);
 
   const form = el(
@@ -270,9 +277,9 @@ function myListBlock() {
         status.replaceChildren();
         await busy(save, async () => {
           try {
-            const r = await api('saveList', { token, link: linkInput.value, notes: notesInput.value });
+            const r = await api('saveList', { token, links: links.values(), notes: notesInput.value });
             view.me = r.me;
-            linkInput.value = r.me.link;
+            links.set(r.me.links);
             notesInput.value = r.me.notes;
             listDirty = false;
             status.replaceChildren(icon('check'), 'Saved');
@@ -286,9 +293,9 @@ function myListBlock() {
     el(
       'div',
       { class: 'field' },
-      el('label', { for: 'my-link' }, 'Gift list link'),
-      linkInput,
-      el('p', { class: 'help', id: 'my-link-help' }, 'Paste a link to your Amazon wish list, or any other gift list.')
+      el('label', { for: 'my-link' }, 'Gift list links'),
+      el('p', { class: 'help', id: 'my-link-help' }, 'Paste your Amazon wish list or any other gift list. Use Add another link for lists on other sites.'),
+      links.node
     ),
     el(
       'div',

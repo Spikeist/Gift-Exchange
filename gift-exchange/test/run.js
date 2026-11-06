@@ -215,6 +215,39 @@ try {
     assert.equal(r.body.me.link, 'https://www.amazon.com/hz/wishlist/ls/XYZ?ref_=wl_share');
   });
 
+  await test('people can add several gift list links', async () => {
+    const t = byName('Taylor').token;
+    let r = await call('saveList', {
+      token: t,
+      links: ['https://www.amazon.com/hz/wishlist/ls/T1', 'target.com/gift-registry/t2', '', 'https://www.amazon.com/hz/wishlist/ls/T1'],
+      notes: '',
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(r.body.me.links, ['https://www.amazon.com/hz/wishlist/ls/T1', 'https://target.com/gift-registry/t2']);
+    assert.equal(r.body.me.link, 'https://www.amazon.com/hz/wishlist/ls/T1');
+    // one box with two pasted addresses becomes two links
+    r = await call('saveList', { token: t, links: ['https://a.example.com/x https://b.example.com/y'], notes: '' });
+    assert.deepEqual(r.body.me.links, ['https://a.example.com/x', 'https://b.example.com/y']);
+    r = await call('saveList', { token: t, links: Array.from({ length: 11 }, (_, i) => `https://s${i}.example.com`), notes: '' });
+    assert.equal(r.status, 400);
+    r = await call('saveList', { token: t, links: ['https://ok.example.com', 'javascript:alert(1)'], notes: '' });
+    assert.equal(r.status, 400);
+    // a list saved before this change (single `link`) still shows up
+    const taylor = byName('Taylor');
+    mock.exec(['HSET', 'gx:lists', taylor.id, JSON.stringify({ link: 'https://old.example.com/list', notes: 'old', updatedAt: 1 })]);
+    r = await call('me', { token: t });
+    assert.deepEqual(r.body.me.links, ['https://old.example.com/list']);
+    r = await call('updatePerson', { id: taylor.id, links: ['https://old.example.com/list', 'https://new.example.com/l'] }, session);
+    assert.deepEqual(r.body.people.find((p) => p.id === taylor.id).links, ['https://old.example.com/list', 'https://new.example.com/l']);
+    assert.equal(r.body.people.find((p) => p.id === taylor.id).notes, 'old');
+    r = await call('join', { code: r.body.joinCode, name: 'Quinn', links: ['etsy.com/registry/q', 'https://www.amazon.com/q'] });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual((await call('me', { token: r.body.token })).body.me.links, ['https://etsy.com/registry/q', 'https://www.amazon.com/q']);
+    state = (await call('state', {}, session)).body;
+    r = await call('removePerson', { id: state.people.find((p) => p.name === 'Quinn').id }, session);
+    state = r.body;
+  });
+
   await test('organizer can edit someone and settings', async () => {
     let r = await call('updatePerson', { id: byName('Sam').id, name: 'Sam R.', link: 'https://www.etsy.com/registry/xyz', notes: 'Loves hiking' }, session);
     assert.equal(r.status, 200, JSON.stringify(r.body));

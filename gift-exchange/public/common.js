@@ -249,3 +249,67 @@ export function demoBanner(...actions) {
     actions.length ? el('div', { class: 'demo-actions' }, actions) : null
   );
 }
+
+/**
+ * One or more gift list link boxes with "Add another link".
+ * Returns { node, values(), set(links) }. The first box gets `id` for its label.
+ */
+export function linkFields(id, initial = [], { onChange, max = 10 } = {}) {
+  const rows = el('div', { class: 'link-rows' });
+  const add = el('button', { class: 'btn btn--quiet add-link', type: 'button' }, 'Add another link');
+
+  const refresh = () => {
+    const all = [...rows.children];
+    all.forEach((row, i) => {
+      const input = row.querySelector('input');
+      if (i === 0) input.id = id;
+      else input.removeAttribute('id');
+      input.setAttribute('aria-label', i === 0 ? 'Gift list link' : `Gift list link ${i + 1}`);
+      input.placeholder = i === 0 ? 'https://www.amazon.com/hz/wishlist/…' : 'Another list, like Target or Etsy';
+      row.querySelector('.link-remove').hidden = all.length === 1;
+    });
+    add.hidden = all.length >= max;
+  };
+
+  const makeRow = (value = '') => {
+    const input = el('input', {
+      class: 'input',
+      type: 'text',
+      inputmode: 'url',
+      autocapitalize: 'off',
+      autocomplete: 'off',
+      spellcheck: 'false',
+    });
+    input.value = value;
+    input.addEventListener('input', () => onChange && onChange());
+    const remove = el('button', { class: 'btn btn--quiet link-remove', type: 'button', 'aria-label': 'Remove this link' }, 'Remove');
+    const row = el('div', { class: 'link-row' }, input, remove);
+    remove.addEventListener('click', () => {
+      const next = row.nextElementSibling || row.previousElementSibling;
+      row.remove();
+      refresh();
+      if (onChange) onChange();
+      next?.querySelector('input')?.focus();
+    });
+    return row;
+  };
+
+  const set = (links) => {
+    rows.replaceChildren(...(links && links.length ? links : ['']).map((v) => makeRow(v)));
+    refresh();
+  };
+
+  add.addEventListener('click', () => {
+    const row = makeRow();
+    rows.append(row);
+    refresh();
+    row.querySelector('input').focus();
+  });
+
+  set(initial);
+  return {
+    node: el('div', { class: 'link-fields' }, rows, add),
+    values: () => [...rows.querySelectorAll('input')].map((i) => i.value.trim()).filter(Boolean),
+    set,
+  };
+}

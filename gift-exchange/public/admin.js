@@ -1,4 +1,4 @@
-import { api, el, icon, storage, toast, busy, copyText, shortDate, DEMO, demoBanner } from './common.js';
+import { api, el, icon, storage, toast, busy, copyText, shortDate, DEMO, demoBanner, linkFields } from './common.js';
 
 const SESSION_KEY = 'gx-admin-session';
 const app = document.getElementById('app');
@@ -293,7 +293,7 @@ function dashboardDemoBanner() {
 
 function headerBand() {
   const n = state.people.length;
-  const withList = state.people.filter((p) => p.link || p.notes).length;
+  const withList = state.people.filter((p) => p.links.length || p.notes).length;
   const opened = state.people.filter((p) => p.openedAt).length;
   const actions = [];
   let phase;
@@ -349,7 +349,7 @@ function headerBand() {
 }
 
 async function confirmDraw(button) {
-  const missing = state.people.filter((p) => !p.link && !p.notes).length;
+  const missing = state.people.filter((p) => !p.links.length && !p.notes).length;
   const ok = await confirmDialog({
     title: 'Draw names now?',
     body: [
@@ -390,7 +390,7 @@ function statusItem(done, doneText, pendingText) {
 
 function personRow(p) {
   const drawn = !!state.drawnAt;
-  const hasList = !!(p.link || p.notes);
+  const hasList = !!(p.links.length || p.notes);
   return el(
     'li',
     { class: 'person' },
@@ -612,15 +612,7 @@ function peoplePanel() {
 function editPerson(p) {
   const drawn = !!state.drawnAt;
   const name = el('input', { class: 'input', autocomplete: 'off', value: p.name });
-  const link = el('input', {
-    class: 'input',
-    inputmode: 'url',
-    autocapitalize: 'off',
-    autocomplete: 'off',
-    spellcheck: 'false',
-    placeholder: 'https://',
-    value: p.link,
-  });
+  const links = linkFields('ed-link', p.links);
   const notes = el('textarea', { class: 'textarea', rows: '3' });
   notes.value = p.notes;
   const error = el('p', { class: 'form-error', role: 'alert', hidden: true });
@@ -638,7 +630,7 @@ function editPerson(p) {
           try {
             state = await api(
               'updatePerson',
-              { id: p.id, name: name.value, link: link.value, notes: notes.value },
+              { id: p.id, name: name.value, links: links.values(), notes: notes.value },
               { session }
             );
             dialog.close();
@@ -656,7 +648,7 @@ function editPerson(p) {
       },
     },
     field('ed-name', 'Name', name),
-    field('ed-link', 'Gift list link', link),
+    el('div', { class: 'field' }, el('label', { for: 'ed-link' }, 'Gift list links'), links.node),
     field('ed-notes', 'Notes', notes, 'Sizes, favorite stores, or gift ideas. The person can edit these too.'),
     error,
     el('div', { class: 'actions' }, cancel, save)

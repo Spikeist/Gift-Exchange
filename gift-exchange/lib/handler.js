@@ -5,7 +5,7 @@ import { makeDraw, DrawError } from './draw.js';
 // Everything lives in a handful of Redis keys:
 //   gx:meta    JSON: title, guidelines, keep-apart pairs, draw time, join link
 //   gx:people  hash: id -> { id, name, token, createdAt }
-//   gx:lists   hash: id -> { link, notes, updatedAt }   (each person edits their own)
+//   gx:lists   hash: id -> { links, notes, updatedAt }   (each person edits their own)
 //   gx:draw    hash: giverId -> receiverId
 //   gx:seen    hash: id -> time they first opened their slip
 //   gx:admin   JSON: organizer password hash + session secret
@@ -27,6 +27,7 @@ export const DEFAULT_GUIDELINES = [
   'The reveal will happen at the end, when all the gifts have been opened.',
 ];
 
+const MAX_LINKS = 10;
 const LIMITS = {
   people: 100,
   name: 60,
@@ -103,6 +104,32 @@ function cleanLink(v) {
     throw new HttpError(400, NOT_A_LINK);
   }
   return url.toString();
+}
+
+
+// Several list links (Amazon plus other stores). Accepts a list, or text with
+// one or more web addresses in it.
+function cleanLinks(links, link) {
+  let raw = links !== undefined ? links : link;
+  if (raw === undefined || raw === null) raw = [];
+  if (!Array.isArray(raw)) raw = [raw];
+  const out = [];
+  for (const item of raw) {
+    const text = String(item ?? '').trim();
+    if (!text) continue;
+    const found = text.match(/https?:\/\/[^\s<>"']+/gi);
+    for (const candidate of found && found.length > 1 ? found : [text]) {
+      const url = cleanLink(candidate);
+      if (url && !out.includes(url)) out.push(url);
+    }
+  }
+  if (out.length > MAX_LINKS) throw new HttpError(400, `Add up to ${MAX_LINKS} links.`);
+  return out;
+}
+
+function listEntry(l) {
+  const links = Array.isArray(l.links) ? l.links : l.link ? [l.link] : [];
+  return { links, link: links[0] || '', notes: l.notes || '' };
 }
 
 function cleanNotes(v) {
@@ -183,7 +210,7 @@ function saveMeta(meta) {
 
 function listOf(state, id) {
   const l = state.lists[id] || {};
-  return { link: l.link || '', notes: l.notes || '', listUpdatedAt: l.updatedAt || null };
+  return { ...listEntry(l), listUpdatedAt: l.updatedAt || null };
 }
 
 function findPerson(state, id) {
@@ -321,7 +348,7 @@ const publicActions = {
     };
   },
 
-  async join({ code, name, link, notes }) {
+  async join({ code, name, links, link, notes }) {
     const state = await load();
     if (typeof code !== 'string' || code.length < 10 || code !== state.meta.joinCode) throw badJoin();
     if (state.meta.drawnAt) {
@@ -337,22 +364,22 @@ const publicActions = {
       );
     }
     if (state.people.length >= LIMITS.people) throw new HttpError(400, 'This exchange is full.');
-    const entry = { link: cleanLink(link), notes: cleanNotes(notes), updatedAt: Date.now() };
+    const entry = { links: cleanLinks(links, link), notes: cleanNotes(notes), updatedAt: Date.now() };
     const person = { id: auth.newId(), name: n, token: auth.newLinkToken(), createdAt: Date.now() };
     const commands = [['HSET', KEYS.people, person.id, JSON.stringify(person)]];
-    if (entry.link || entry.notes) commands.push(['HSET', KEYS.lists, person.id, JSON.stringify(entry)]);
+    if (entry.links.length || entry.notes) commands.push(['HSET', KEYS.lists, person.id, JSON.stringify(entry)]);
     await db.transaction(commands);
     return { token: person.token, name: person.name };
   },
 
   // A participant saving their own gift list.
-  async saveList({ token, link, notes }) {
+  async saveList({ token, links, link, notes }) {
     const state = await load();
     const me = findByToken(state, token);
     if (!me) throw badLink();
-    const entry = { link: cleanLink(link), notes: cleanNotes(notes), updatedAt: Date.now() };
+    const entry = { links: cleanLinks(links, link), notes: cleanNotes(notes), updatedAt: Date.now() };
     await db.cmd('HSET', KEYS.lists, me.id, JSON.stringify(entry));
-    return { me: { name: me.name, link: entry.link, notes: entry.notes, listUpdatedAt: entry.updatedAt } };
+    return { me: { name: me.name, ...listEntry(entry), listUpdatedAt: entry.updatedAt } };
   },
 };
 
@@ -402,7 +429,7 @@ const adminActions = {
     await db.cmd('HSET', KEYS.people, ...fields);
   },
 
-  async updatePerson(state, { id, name, link, notes }) {
+  async updatePerson(state, { id, name, links, link, notes }) {
     const person = findPerson(state, id);
     const commands = [];
     if (name !== undefined) {
@@ -413,14 +440,14 @@ const adminActions = {
       }
       if (n !== person.name) commands.push(['HSET', KEYS.people, id, JSON.stringify({ ...person, name: n })]);
     }
-    if (link !== undefined || notes !== undefined) {
+    if (links !== undefined || link !== undefined || notes !== undefined) {
       const current = listOf(state, id);
       const entry = {
-        link: link !== undefined ? cleanLink(link) : current.link,
+        links: links !== undefined || link !== undefined ? cleanLinks(links, link) : current.links,
         notes: notes !== undefined ? cleanNotes(notes) : current.notes,
         updatedAt: Date.now(),
       };
-      if (entry.link !== current.link || entry.notes !== current.notes) {
+      if (JSON.stringify(entry.links) !== JSON.stringify(current.links) || entry.notes !== current.notes) {
         commands.push(['HSET', KEYS.lists, id, JSON.stringify(entry)]);
       }
     }
